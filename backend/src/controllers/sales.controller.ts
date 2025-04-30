@@ -5,65 +5,77 @@ import { HttpStatusCode } from "../constants/enums";
 import { AuthRequest } from "../utils/interface";
 import { validationResult } from "express-validator";
 import { User } from "../models/user.scheema";
+import { Customer } from "../models/customer.schema";
 import { transporter } from "../config/nodeMailer";
 import { generateSalesReport,MongoosePopulatedSale } from "../utils/generateSalesReport";
 import {SALES_MESSAGES} from "../constants/sales.constants.message"
 
 export const addNewSale = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-          return res.status(HttpStatusCode.BAD_REQUEST).json({ errors: errors.array() });
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(HttpStatusCode.BAD_REQUEST).json({ errors: errors.array() });
+    }
+
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(HttpStatusCode.UNAUTHORIZED).json({ message: SALES_MESSAGES.USER_NOT_AUTHENTICATED });
+    }
+
+    const { products, customerId, paymentMethod, totalPrice, isPaid = false } = req.body;
+
+    if (!Array.isArray(products) || products.length === 0) {
+      return res.status(HttpStatusCode.BAD_REQUEST).json({ message: "Products array is required" });
+    }
+
+    // 🔒 Check if customer exists and is not blocked
+    const customer = await Customer.findById(customerId);
+    if (!customer) {
+      return res.status(HttpStatusCode.NOT_FOUND).json({ message: "Customer not found" });
+    }
+
+    if (customer.isBlocked) {
+      return res.status(HttpStatusCode.FORBIDDEN).json({ message: "Customer is blocked from making purchases" });
+    }
+
+    const saleProducts = [];
+
+    for (const item of products) {
+      const { productId, quantity } = item;
+
+      const existingProduct = await Product.findById(productId);
+      if (!existingProduct) {
+        return res.status(HttpStatusCode.NOT_FOUND).json({ message: `Product not found: ${productId}` });
       }
 
-      const userId = req.user?.id;
-      if (!userId) {
-          return res.status(HttpStatusCode.UNAUTHORIZED).json({ message: SALES_MESSAGES.USER_NOT_AUTHENTICATED });
+      if (existingProduct.quantity < quantity) {
+        return res.status(HttpStatusCode.BAD_REQUEST).json({ message: `Insufficient stock for product: ${existingProduct.productName}` });
       }
 
-      const { products, customerId, paymentMethod, totalPrice, isPaid = false } = req.body;
+      existingProduct.quantity -= quantity;
+      await existingProduct.save();
 
-      if (!Array.isArray(products) || products.length === 0) {
-          return res.status(HttpStatusCode.BAD_REQUEST).json({ message: "Products array is required" });
-      }
+      saleProducts.push({ productId, quantity });
+    }
 
-      const saleProducts = [];
+    const newSale = new Sale({
+      userId,
+      products: saleProducts,
+      customerId,
+      paymentMethod,
+      totalPrice,
+      isPaid,
+    });
 
-      for (const item of products) {
-          const { productId, quantity } = item;
+    await newSale.save();
 
-          const existingProduct = await Product.findById(productId);
-          if (!existingProduct) {
-              return res.status(HttpStatusCode.NOT_FOUND).json({ message: `Product not found: ${productId}` });
-          }
+    return res.status(HttpStatusCode.CREATED).json({
+      message: SALES_MESSAGES.SALE_CREATED,
+      sale: newSale,
+    });
 
-          if (existingProduct.quantity < quantity) {
-              return res.status(HttpStatusCode.BAD_REQUEST).json({ message: `Insufficient stock for product: ${existingProduct.productName}` });
-          }
-
-          existingProduct.quantity -= quantity;
-          await existingProduct.save();
-
-          saleProducts.push({ productId, quantity });
-      }
-
-      const newSale = new Sale({
-          userId,
-          products: saleProducts,
-          customerId,
-          paymentMethod,
-          totalPrice,
-          isPaid,
-      });
-
-      await newSale.save();
-
-      return res.status(HttpStatusCode.CREATED).json({
-          message: SALES_MESSAGES.SALE_CREATED,
-          sale: newSale,
-      });
   } catch (error) {
-      next(error);
+    next(error);
   }
 };
 

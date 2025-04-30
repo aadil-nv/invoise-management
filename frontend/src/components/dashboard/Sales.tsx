@@ -28,7 +28,9 @@ export function Sales() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [filteredSales, setFilteredSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [listedProductData, setListedProductData] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [listedCustomers, setListedCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [searchText, setSearchText] = useState<string>('');
   const [isModalVisible, setIsModalVisible] = useState<boolean>(false);
@@ -52,15 +54,22 @@ export function Sales() {
   const fetchData = async (): Promise<void> => {
     setLoading(true);
     try {
-      const [salesData, productsData, customersData] = await Promise.all([
+      const [salesData, productsData, customersData, listedProductsData, listedCustomersData] = await Promise.all([
         salesApi.fetchSales(),
         salesApi.fetchProducts(),
-        salesApi.fetchCustomers()
+        salesApi.fetchCustomers(),
+        salesApi.fetchListedProducts(),
+        salesApi.fetchListedCustomers()
       ]);
       
       setSales(Array.isArray(salesData) ? salesData : []);
       setProducts(Array.isArray(productsData) ? productsData : []);
       setCustomers(Array.isArray(customersData) ? customersData : []);
+      setListedProductData(Array.isArray(listedProductsData) ? listedProductsData : []);
+      setListedCustomers(Array.isArray(listedCustomersData) ? listedCustomersData : []);
+      console.log(products.map((d)=>d._id));
+      console.log(customers.map((c)=>c._id));
+      
     } catch (error) {
       toast.error('Failed to fetch data');
       console.error(error);
@@ -81,7 +90,13 @@ export function Sales() {
     }
 
     const filtered = sales.filter(sale => {
+      // Check for customer name
+      const customerName = sale.customerId && typeof sale.customerId === 'object' && 'name' in sale.customerId 
+        ? sale.customerId.name.toLowerCase() 
+        : '';
+      
       if (
+        customerName.includes(searchText.toLowerCase()) ||
         sale.paymentMethod.toLowerCase().includes(searchText.toLowerCase()) ||
         (sale.isPaid ? 'paid' : 'unpaid').includes(searchText.toLowerCase()) ||
         (sale.isActive ? 'active' : 'inactive').includes(searchText.toLowerCase())
@@ -116,28 +131,35 @@ export function Sales() {
     
     const formattedProducts = sale.products.map(p => {
       let productId;
+      let productName = '';
+      
       if (typeof p.productId === 'object' && p.productId && '_id' in p.productId) {
         productId = p.productId._id;
+        productName = p.productId.productName || '';
       } else {
         productId = p.productId;
       }
       
       return {
         productId,
+        productName,
         quantity: p.quantity,
       };
     });
     
     let customerId;
+    let customerName = '';
+    
     if (typeof sale.customerId === 'object' && sale.customerId && '_id' in sale.customerId) {
       customerId = sale.customerId._id;
+      customerName = sale.customerId.name || '';
     } else {
       customerId = sale.customerId;
     }
     
-
     form.setFieldsValue({
       customerId,
+      customerName,
       paymentMethod: sale.paymentMethod,
       subtotal: sale.subtotal || sale.totalPrice / 1.1, 
       tax: sale.tax || sale.totalPrice * 0.1, 
@@ -169,7 +191,7 @@ export function Sales() {
     
     formProducts.forEach((item: { productId?: string, quantity?: number }) => {
       if (item.productId && item.quantity) {
-        const product = products.find(p => p._id === item.productId);
+        const product = listedProductData.find(p => p._id === item.productId);
         if (product) {
           subtotal += product.price * item.quantity;
         }
@@ -221,7 +243,6 @@ export function Sales() {
       fetchData();
     } catch (error: unknown) {
       if (error instanceof AxiosError) {
-        
         toast.error(error.response?.data.message||error.response?.data.errors[0].msg || 'Failed to save sale');
       }
     }
@@ -347,6 +368,21 @@ export function Sales() {
       width: 100,
     },
     {
+      title: 'Customer',
+      dataIndex: 'customerId',
+      key: 'customer',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      render: (customerId: any, record: Sale) => {
+        let customerName = 'Walk-in Customer';
+        
+        if (typeof customerId === 'object' && customerId && 'name' in customerId) {
+          customerName = customerId.name;
+        }
+        
+        return <span style={{ opacity: record.isActive ? 1 : 0.5 }}>{customerName}</span>;
+      },
+    },
+    {
       title: 'Products',
       dataIndex: 'products',
       key: 'products',
@@ -382,26 +418,6 @@ export function Sales() {
       render: (text: string, record: Sale) => (
         <span style={{ opacity: record.isActive ? 1 : 0.5 }}>{text}</span>
       ),
-    },
-    {
-      title: 'Subtotal',
-      dataIndex: 'subtotal',
-      key: 'subtotal',
-      render: (subtotal: number, record: Sale) => {
-        // Calculate subtotal if not available
-        const value = subtotal || record.totalPrice / 1.1;
-        return <span style={{ opacity: record.isActive ? 1 : 0.5 }}>${value.toFixed(2)}</span>;
-      },
-    },
-    {
-      title: 'Tax (10%)',
-      dataIndex: 'tax',
-      key: 'tax',
-      render: (tax: number, record: Sale) => {
-        // Calculate tax if not available
-        const value = tax || record.totalPrice * 0.1;
-        return <span style={{ opacity: record.isActive ? 1 : 0.5 }}>${value.toFixed(2)}</span>;
-      },
     },
     {
       title: 'Total Price',
@@ -506,7 +522,7 @@ export function Sales() {
 
       <div style={{ marginBottom: 16 }}>
         <Input
-          placeholder="Search by product, payment method, payment status, or active status"
+          placeholder="Search by customer, product, payment method, payment status, or active status"
           prefix={<SearchOutlined />}
           value={searchText}
           onChange={e => setSearchText(e.target.value)}
@@ -531,7 +547,6 @@ export function Sales() {
         onChange={page => setCurrentPage(page)}
         showSizeChanger={false}
       />
-
 
       <Modal
         title={isEditMode ? 'Edit Sale' : 'Add New Sale'}
@@ -561,14 +576,23 @@ export function Sales() {
             isActive: 'active',
           }}
         >
+          {isEditMode && (
+            <Form.Item
+              name="customerName"
+              label="Customer Name"
+            >
+              <Input disabled />
+            </Form.Item>
+          )}
+          
           <Form.Item
-            name="customerId"
-            label="Customer"
+            
+            label={isEditMode ? "Change Customer" : "Customer"}
           >
             <Select 
               allowClear 
               placeholder="Select a customer (optional for cash sales)"
-              options={Array.isArray(customers) ? customers.map(c => ({ label: c.name, value: c._id })) : []}
+              options={Array.isArray(listedCustomers) ? listedCustomers.map(c => ({ label: c.name, value: c._id })) : []}
             />
           </Form.Item>
 
@@ -582,21 +606,32 @@ export function Sales() {
                 <>
                   {fields.map(({ key, name, ...restField }) => (
                     <div key={key} style={{ display: 'flex', marginBottom: 8 }}>
-                      <Form.Item
-                        {...restField}
-                        name={[name, `productId`]}
-                        rules={[{ required: true, message: 'Please select a product' }]}
-                        style={{ width: '60%', marginRight: 8, marginBottom: 0 }}
-                      >
-                        <Select
-                          placeholder="Select product"
-                          options={Array.isArray(products) ? products.map(p => ({ 
-                            label: `${p.productName} - $${p.price} (${p.quantity} in stock)`, 
-                            value: p._id 
-                          })) : []}
-                          onChange={() => updatePrices()}
+                      {isEditMode && form.getFieldValue(['products', name, 'productName']) && (
+                        <Input
+                          disabled
+                          value={form.getFieldValue(['products', name, 'productName'])}
+                          style={{ width: '60%', marginRight: 8, marginBottom: 0 }}
+                          placeholder="Product name"
                         />
-                      </Form.Item>
+                      )}
+                      
+                      {(!isEditMode || !form.getFieldValue(['products', name, 'productName'])) && (
+                        <Form.Item
+                          {...restField}
+                          name={[name, `productId`]}
+                          rules={[{ required: true, message: 'Please select a product' }]}
+                          style={{ width: '60%', marginRight: 8, marginBottom: 0 }}
+                        >
+                          <Select
+                            placeholder="Select product"
+                            options={Array.isArray(listedProductData) ? listedProductData.map(p => ({ 
+                              label: `${p.productName} - $${p.price} (${p.quantity} in stock)`, 
+                              value: p._id 
+                            })) : []}
+                            onChange={() => updatePrices()}
+                          />
+                        </Form.Item>
+                      )}
                       
                       <Form.Item
                         {...restField}
@@ -645,44 +680,15 @@ export function Sales() {
 
           <div style={{ display: 'flex', gap: '16px' }}>
             <Form.Item
-              name="subtotal"
-              label="Subtotal"
-              style={{ width: '33%' }}
-              rules={[{ required: true, message: 'Subtotal required' }]}
-            >
-              <InputNumber
-                style={{ width: '100%' }}
-                formatter={value => `$ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                parser={value => value!.replace(/\$\s?|(,*)/g, '')}
-                readOnly
-              />
-            </Form.Item>
-
-            <Form.Item
-              name="tax"
-              label="Tax (10%)"
-              style={{ width: '33%' }}
-              rules={[{ required: true, message: 'Tax required' }]}
-            >
-              <InputNumber
-                style={{ width: '100%' }}
-                formatter={value => `$ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                parser={value => value!.replace(/\$\s?|(,*)/g, '')}
-                readOnly
-              />
-            </Form.Item>
-
-            <Form.Item
               name="totalPrice"
               label="Total Price"
-              style={{ width: '33%' }}
+              style={{ width: '100%' }}
               rules={[{ required: true, message: 'Total price required' }]}
             >
               <InputNumber
                 style={{ width: '100%' }}
                 formatter={value => `$ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                 parser={value => value!.replace(/\$\s?|(,*)/g, '')}
-                readOnly
               />
             </Form.Item>
           </div>
@@ -709,9 +715,15 @@ export function Sales() {
               </Select.Option>
             </Select>
           </Form.Item>
+
+          <Form.Item name="subtotal" hidden={true}>
+            <InputNumber />
+          </Form.Item>
+          <Form.Item name="tax" hidden={true}>
+            <InputNumber />
+          </Form.Item>
         </Form>
       </Modal>
-
 
       <Modal
         title="Send Sales Report by Email"

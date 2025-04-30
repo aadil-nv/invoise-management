@@ -11,8 +11,16 @@ export const salesApi = {
     const response = await userInstance.get('api/product/products');
     return response.data?.products || response.data || [];
   },
+  fetchListedProducts: async () => {
+    const response = await userInstance.get('api/product/listed-products');
+    return response.data?.products || response.data || [];
+  },
 
   fetchCustomers: async () => {
+    const response = await userInstance.get('api/customer/customers');
+    return response.data?.customers || response.data || [];
+  },
+  fetchListedCustomers: async () => {
     const response = await userInstance.get('api/customer/listed-customers');
     return response.data?.customers || response.data || [];
   },
