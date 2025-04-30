@@ -198,7 +198,7 @@ export function Sales() {
       }
     });
     
-    const tax = subtotal * 0.1;
+    const tax = subtotal * 0.1; // Always 10% tax
     const total = subtotal + tax;
     
     return { subtotal, tax, total };
@@ -219,6 +219,7 @@ export function Sales() {
   
       const payload = {
         ...values,
+        customerId: values.customerId, // Ensure customerId is included
         date: values.date.format('YYYY-MM-DD'),
         products: values.products.map((p: { productId: string; quantity: number }) => ({
           productId: p.productId,
@@ -227,7 +228,8 @@ export function Sales() {
         isPaid: values.isPaid,
         isActive: values.isActive === 'active',
         subtotal: values.subtotal,
-        tax: values.tax
+        tax: values.tax,
+        totalPrice: values.subtotal + values.tax // Ensure totalPrice is calculated correctly
       };
   
       if (isEditMode && currentSale) {
@@ -243,7 +245,11 @@ export function Sales() {
       fetchData();
     } catch (error: unknown) {
       if (error instanceof AxiosError) {
-        toast.error(error.response?.data.message||error.response?.data.errors[0].msg || 'Failed to save sale');
+        toast.error(error.response?.data.message || 
+          (error.response?.data.errors && error.response.data.errors[0].msg) || 
+          'Failed to save sale');
+      } else {
+        toast.error('Failed to save sale');
       }
     }
   };
@@ -371,8 +377,7 @@ export function Sales() {
       title: 'Customer',
       dataIndex: 'customerId',
       key: 'customer',
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      render: (customerId: any, record: Sale) => {
+      render: (customerId: string | Customer, record: Sale) => {
         let customerName = 'Walk-in Customer';
         
         if (typeof customerId === 'object' && customerId && 'name' in customerId) {
@@ -586,7 +591,7 @@ export function Sales() {
           )}
           
           <Form.Item
-            
+            name="customerId"
             label={isEditMode ? "Change Customer" : "Customer"}
           >
             <Select 
@@ -618,7 +623,7 @@ export function Sales() {
                       {(!isEditMode || !form.getFieldValue(['products', name, 'productName'])) && (
                         <Form.Item
                           {...restField}
-                          name={[name, `productId`]}
+                          name={[name, 'productId']}
                           rules={[{ required: true, message: 'Please select a product' }]}
                           style={{ width: '60%', marginRight: 8, marginBottom: 0 }}
                         >
@@ -680,15 +685,44 @@ export function Sales() {
 
           <div style={{ display: 'flex', gap: '16px' }}>
             <Form.Item
+              name="subtotal"
+              label="Subtotal"
+              style={{ width: '33%' }}
+              rules={[{ required: true, message: 'Subtotal required' }]}
+            >
+              <InputNumber
+                style={{ width: '100%' }}
+                formatter={value => `$ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                parser={value => value!.replace(/\$\s?|(,*)/g, '')}
+                disabled
+              />
+            </Form.Item>
+            
+            <Form.Item
+              name="tax"
+              label="Tax (10%)"
+              style={{ width: '33%' }}
+              rules={[{ required: true, message: 'Tax required' }]}
+            >
+              <InputNumber
+                style={{ width: '100%' }}
+                formatter={value => `$ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                parser={value => value!.replace(/\$\s?|(,*)/g, '')}
+                disabled
+              />
+            </Form.Item>
+            
+            <Form.Item
               name="totalPrice"
               label="Total Price"
-              style={{ width: '100%' }}
+              style={{ width: '33%' }}
               rules={[{ required: true, message: 'Total price required' }]}
             >
               <InputNumber
                 style={{ width: '100%' }}
                 formatter={value => `$ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                 parser={value => value!.replace(/\$\s?|(,*)/g, '')}
+                disabled
               />
             </Form.Item>
           </div>
@@ -716,12 +750,6 @@ export function Sales() {
             </Select>
           </Form.Item>
 
-          <Form.Item name="subtotal" hidden={true}>
-            <InputNumber />
-          </Form.Item>
-          <Form.Item name="tax" hidden={true}>
-            <InputNumber />
-          </Form.Item>
         </Form>
       </Modal>
 

@@ -26,10 +26,12 @@ export const salesApi = {
   },
 
   addSale: async (payload: SalePayload) => {
+    
     return await userInstance.post('api/sale/add-sale', payload);
   },
 
   updateSale: async (id: string, payload: SalePayload) => {
+
     return await userInstance.put(`api/sale/update-sale/${id}`, payload);
   },
 
