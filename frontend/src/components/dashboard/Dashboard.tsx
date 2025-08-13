@@ -6,7 +6,7 @@ import {
   ShoppingOutlined, 
   DollarOutlined 
 } from '@ant-design/icons';
-import { motion } from 'framer-motion';
+import { motion, Variants } from 'framer-motion';
 import axios from 'axios';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import {userInstance} from '../../middlewares/axios'; 
@@ -14,7 +14,6 @@ import { DashboardData,ApiResponse,ChartDataPoint,TopProduct, TooltipFormatterCa
 
 const { Content } = Layout;
 const { Title } = Typography;
-
 
 export function Dashboard() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
@@ -52,8 +51,10 @@ export function Dashboard() {
     return `${monthNames[parseInt(month) - 1]} ${year}`;
   };
 
-  const containerVariants = {
-    hidden: { opacity: 0 },
+  const containerVariants: Variants = {
+    hidden: { 
+      opacity: 0 
+    },
     visible: {
       opacity: 1,
       transition: {
@@ -62,8 +63,11 @@ export function Dashboard() {
     }
   };
 
-  const itemVariants = {
-    hidden: { y: 20, opacity: 0 },
+  const itemVariants: Variants = {
+    hidden: { 
+      y: 20, 
+      opacity: 0 
+    },
     visible: {
       y: 0,
       opacity: 1,
